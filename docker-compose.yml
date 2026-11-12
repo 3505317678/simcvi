@@ -45,7 +45,7 @@ services:
       start_period: 30s
 
   node-red:
-    image: nodered/node-red:5.0.7
+    image: nodered/node-red:5.0.9-24
     restart: unless-stopped
     <<: *registro
     depends_on:
