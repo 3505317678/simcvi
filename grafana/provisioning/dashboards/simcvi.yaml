@@ -1,0 +1,15 @@
+# Proveedor de tableros: Grafana carga los JSON de /etc/grafana/dashboards/simcvi.
+# allowUiUpdates: false mantiene el repositorio como fuente de verdad; para cambiar
+# el tablero, edítelo en Grafana, expórtelo como JSON y reemplace el archivo.
+apiVersion: 1
+
+providers:
+  - name: simcvi
+    orgId: 1
+    folder: SIMCVI
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards/simcvi

@@ -1,0 +1,122 @@
+# SIMCVI · Sistema de Monitoreo y Control de Válvulas Industriales
+#
+#   Node-RED 5   simulación, control, API y la interfaz web   http://localhost:1880
+#   InfluxDB 2.9 almacenamiento de series de tiempo (Flux)      http://localhost:8086
+#   Grafana 13   tableros históricos                            http://localhost:3000
+#
+# Los puertos se publican solo en 127.0.0.1: nada queda expuesto a la red local.
+# Los secretos vienen del archivo .env (créelo con scripts/init-env.sh o .ps1).
+
+name: simcvi
+
+x-registro: &registro
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
+services:
+  influxdb:
+    image: influxdb:2.9.1
+    restart: unless-stopped
+    <<: *registro
+    ports:
+      - "127.0.0.1:8086:8086"
+    environment:
+      TZ: ${TZ:-America/Bogota}
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX_ADMIN_USER:-admin}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX_ADMIN_PASSWORD:?falta el archivo .env, ejecute scripts/init-env}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUX_ORG:-simcvi}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUX_BUCKET:-simcvi}
+      DOCKER_INFLUXDB_INIT_RETENTION: ${INFLUX_RETENTION:-720h}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX_ADMIN_TOKEN:?falta el archivo .env, ejecute scripts/init-env}
+    volumes:
+      - influxdb-data:/var/lib/influxdb2
+      - influxdb-config:/etc/influxdb2
+      # Scripts de administración (tokens de mínimo privilegio y respaldo).
+      - ./scripts/influxdb:/opt/simcvi:ro
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  node-red:
+    image: nodered/node-red:5.0.7
+    restart: unless-stopped
+    <<: *registro
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:1880:1880"
+    environment:
+      TZ: ${TZ:-America/Bogota}
+      NR_ADMIN_USER: ${NR_ADMIN_USER:-admin}
+      NR_ADMIN_PASSWORD: ${NR_ADMIN_PASSWORD:?falta el archivo .env, ejecute scripts/init-env}
+      NR_CREDENTIAL_SECRET: ${NR_CREDENTIAL_SECRET:?falta el archivo .env, ejecute scripts/init-env}
+      INFLUX_URL: http://influxdb:8086
+      INFLUX_ORG: ${INFLUX_ORG:-simcvi}
+      INFLUX_BUCKET: ${INFLUX_BUCKET:-simcvi}
+      INFLUX_TOKEN: ${NODERED_INFLUX_TOKEN:?falta el archivo .env, ejecute scripts/init-env}
+      GRAFANA_INTERNAL_URL: http://grafana:3000
+      GRAFANA_PUBLIC_URL: ${GRAFANA_PUBLIC_URL:-http://localhost:3000}
+      SIM_ZONAS: ${SIM_ZONAS:-4}
+      SIM_INTERVALO_SEG: ${SIM_INTERVALO_SEG:-2}
+      SIM_PROB_ANOMALIA_PCT: ${SIM_PROB_ANOMALIA_PCT:-4}
+      SIM_PROB_INCENDIO_PCT: ${SIM_PROB_INCENDIO_PCT:-0}
+      SIM_AUTOINICIO: ${SIM_AUTOINICIO:-true}
+      SIMCVI_CORE_DIR: /srv/simcvi-core
+      SIMCVI_UI_DIR: /srv/simcvi-ui
+    volumes:
+      # /data es el directorio de usuario de Node-RED: settings.js y flows.json del proyecto.
+      - ./node-red:/data
+      - ./core:/srv/simcvi-core:ro
+      - ./ui:/srv/simcvi-ui:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+  grafana:
+    image: grafana/grafana:13.2.3
+    restart: unless-stopped
+    <<: *registro
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:3000:3000"
+    environment:
+      TZ: ${TZ:-America/Bogota}
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?falta el archivo .env, ejecute scripts/init-env}
+      GF_SERVER_ROOT_URL: ${GRAFANA_PUBLIC_URL:-http://localhost:3000}
+      # Lectura anónima (rol Viewer) para embeber el tablero en la interfaz de SIMCVI.
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ALLOW_EMBEDDING: "true"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/simcvi/simcvi-planta.json
+      # Usadas por provisioning/datasources/influxdb.yaml
+      INFLUX_ORG: ${INFLUX_ORG:-simcvi}
+      INFLUX_BUCKET: ${INFLUX_BUCKET:-simcvi}
+      GRAFANA_INFLUX_TOKEN: ${GRAFANA_INFLUX_TOKEN:?falta el archivo .env, ejecute scripts/init-env}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards/simcvi:ro
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  influxdb-data:
+  influxdb-config:
+  grafana-data:

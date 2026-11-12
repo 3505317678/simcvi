@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self'; font-src 'self'; img-src 'self' data:; connect-src 'self'; frame-src http://localhost:3000 http://127.0.0.1:3000; base-uri 'self'; form-action 'self'; object-src 'none'"
+    />
+    <meta name="color-scheme" content="light dark" />
+    <title>SIMCVI · Sala de control</title>
+    <link rel="icon" href="img/icono.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="css/tokens.css" />
+    <link rel="stylesheet" href="css/app.css" />
+  </head>
+  <body>
+    <a class="saltar" href="#contenido">Ir al contenido</a>
+
+    <header class="barra">
+      <div class="marca">
+        <svg class="marca__simbolo" viewBox="0 0 32 32" aria-hidden="true">
+          <path d="M3 9v14l13-7z M29 9v14l-13-7z" />
+          <path d="M16 16V5 M11 5h10" />
+        </svg>
+        <div>
+          <p class="marca__nombre">SIMCVI</p>
+          <p class="marca__sub">Monitoreo y control de válvulas</p>
+        </div>
+      </div>
+
+      <nav class="navegacion" aria-label="Vistas">
+        <a href="#planta" data-vista-enlace="planta">Planta</a>
+        <a href="#tendencias" data-vista-enlace="tendencias">Tendencias</a>
+        <a href="#eventos" data-vista-enlace="eventos">Eventos</a>
+        <a href="#pruebas" data-vista-enlace="pruebas">Pruebas</a>
+        <a href="#arquitectura" data-vista-enlace="arquitectura">Arquitectura</a>
+        <a href="#grafana" data-vista-enlace="grafana">Grafana</a>
+        <a href="#ajustes" data-vista-enlace="ajustes">Ajustes</a>
+      </nav>
+
+      <div class="barra__estado">
+        <ul class="servicios" aria-label="Estado de los servicios">
+          <li id="srv-nodered" data-estado="desconocido"><span class="servicios__punto" aria-hidden="true"></span>Node-RED <span class="servicios__texto">conectando</span></li>
+          <li id="srv-influxdb" data-estado="desconocido"><span class="servicios__punto" aria-hidden="true"></span>InfluxDB <span class="servicios__texto">sin datos</span></li>
+          <li id="srv-grafana" data-estado="desconocido"><span class="servicios__punto" aria-hidden="true"></span>Grafana <span class="servicios__texto">sin datos</span></li>
+        </ul>
+        <time id="reloj" class="reloj">--:--:--</time>
+        <button id="btn-tema" class="boton boton--icono" type="button" aria-label="Cambiar entre tema claro y oscuro" title="Cambiar tema">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9 7 7 0 0 1-9-9z" /></svg>
+        </button>
+      </div>
+    </header>
+
+    <div id="franja-alarma" class="franja" hidden role="alert"></div>
+
+    <main id="contenido" class="contenido" tabindex="-1">
+      <!-- Planta -->
+      <section class="vista vista--planta" data-vista="planta" aria-labelledby="t-planta">
+        <h1 id="t-planta" class="vista__titulo">Planta</h1>
+        <div class="planta">
+          <div class="sinoptico">
+            <div class="sinoptico__cabecera">
+              <p class="sinoptico__fuente">Cabezal de distribución</p>
+              <p class="sinoptico__leyenda">
+                <span class="leyenda leyenda--banda"></span>rango normal
+                <span class="leyenda leyenda--aguja"></span>valor actual
+              </p>
+            </div>
+            <ol id="zonas" class="zonas" aria-live="off"></ol>
+            <p id="zonas-vacio" class="vacio">Esperando la primera lectura de Node-RED…</p>
+          </div>
+
+          <aside class="mando" aria-labelledby="t-mando">
+            <h2 id="t-mando" class="mando__titulo">Estado de la planta</h2>
+            <p id="estado-planta" class="estado-planta" data-nivel="normal">Sin datos</p>
+            <dl class="cifras">
+              <div><dt>Válvulas abiertas</dt><dd id="k-valvulas">–</dd></div>
+              <div><dt>Zonas en alerta</dt><dd id="k-alerta">–</dd></div>
+              <div><dt>Ciclo</dt><dd id="k-ciclo">–</dd></div>
+              <div><dt>Intervalo</dt><dd id="k-intervalo">–</dd></div>
+            </dl>
+
+            <h3 class="mando__subtitulo">Mando</h3>
+            <div class="mando__grupo">
+              <button id="btn-simulacion" class="boton boton--principal" type="button">Detener simulación</button>
+              <label class="interruptor">
+                <input id="chk-auto" type="checkbox" />
+                <span>Control automático</span>
+              </label>
+            </div>
+            <div class="mando__grupo mando__grupo--fila">
+              <button class="boton" type="button" data-todas="cerrar">Cerrar todas</button>
+              <button class="boton" type="button" data-todas="abrir">Abrir todas</button>
+              <button class="boton" type="button" data-todas="auto">Todas a automático</button>
+            </div>
+
+            <h3 class="mando__subtitulo">Última alarma</h3>
+            <p id="ultima-alarma" class="ultima-alarma">Ninguna desde el inicio.</p>
+          </aside>
+        </div>
+      </section>
+
+      <!-- Tendencias -->
+      <section class="vista" data-vista="tendencias" aria-labelledby="t-tendencias" hidden>
+        <h1 id="t-tendencias" class="vista__titulo">Tendencias en vivo</h1>
+        <p class="vista__nota">Últimos ciclos guardados en Node-RED. El histórico completo está en Grafana.</p>
+        <div class="herramientas">
+          <div class="segmentado" role="radiogroup" aria-label="Variable">
+            <label><input type="radio" name="variable" value="presion" checked /><span>Presión</span></label>
+            <label><input type="radio" name="variable" value="temperatura" /><span>Temperatura</span></label>
+            <label><input type="radio" name="variable" value="caudal" /><span>Caudal</span></label>
+          </div>
+          <fieldset id="filtro-zonas" class="chips">
+            <legend>Zonas</legend>
+          </fieldset>
+        </div>
+        <div class="grafica"><canvas id="grafica-tendencias" aria-label="Tendencia de la variable seleccionada por zona" role="img"></canvas></div>
+      </section>
+
+      <!-- Eventos -->
+      <section class="vista" data-vista="eventos" aria-labelledby="t-eventos" hidden>
+        <h1 id="t-eventos" class="vista__titulo">Registro de eventos</h1>
+        <div class="herramientas">
+          <label class="campo campo--linea">Severidad
+            <select id="f-severidad">
+              <option value="">Todas</option>
+              <option value="critica">Crítica</option>
+              <option value="alarma">Alarma</option>
+              <option value="aviso">Aviso</option>
+              <option value="info">Información</option>
+            </select>
+          </label>
+          <label class="campo campo--linea">Zona
+            <select id="f-zona"><option value="">Todas</option></select>
+          </label>
+          <label class="campo campo--linea">Buscar
+            <input id="f-texto" type="search" placeholder="Texto del evento" />
+          </label>
+          <button id="btn-exportar-eventos" class="boton" type="button">Descargar CSV</button>
+        </div>
+        <div class="tabla-envoltura">
+          <table class="tabla">
+            <thead>
+              <tr><th scope="col">Hora</th><th scope="col">Severidad</th><th scope="col">Zona</th><th scope="col">Evento</th><th scope="col">Acción</th><th scope="col" class="num">Respuesta</th></tr>
+            </thead>
+            <tbody id="tabla-eventos"></tbody>
+          </table>
+        </div>
+        <p class="vista__nota">La interfaz muestra los 40 eventos más recientes que envía Node-RED. Todos quedan guardados en InfluxDB (medición <code>eventos</code>).</p>
+      </section>
+
+      <!-- Pruebas -->
+      <section class="vista" data-vista="pruebas" aria-labelledby="t-pruebas" hidden>
+        <h1 id="t-pruebas" class="vista__titulo">Escenarios de prueba</h1>
+        <p class="vista__nota">Corresponden a la Tabla de escenarios del informe (EP-01 a EP-06). Cada prueba compara la respuesta esperada con lo que el sistema hizo.</p>
+
+        <div class="indicadores" id="indicadores"></div>
+        <div class="herramientas">
+          <button id="btn-reiniciar-metricas" class="boton" type="button">Reiniciar métricas</button>
+          <button id="btn-exportar-metricas" class="boton" type="button">Descargar resultados (JSON)</button>
+        </div>
+
+        <div class="pruebas">
+          <ol id="lista-escenarios" class="escenarios"></ol>
+          <div id="detalle-escenario" class="escenario-detalle" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <!-- Arquitectura -->
+      <section class="vista" data-vista="arquitectura" aria-labelledby="t-arquitectura" hidden>
+        <h1 id="t-arquitectura" class="vista__titulo">Recorrido de los datos</h1>
+        <p class="vista__nota">Cada pulso es un mensaje real: las instantáneas viajan por WebSocket y cada ciclo se escribe en InfluxDB.</p>
+        <div id="diagrama" class="diagrama"></div>
+        <h2 class="subtitulo">Última escritura en InfluxDB</h2>
+        <p class="vista__nota">Protocolo de línea: <span class="lp-medicion">medición</span>, <span class="lp-etiqueta">etiquetas</span>, <span class="lp-campo">campos</span> y <span class="lp-tiempo">marca de tiempo (ns)</span>.</p>
+        <pre id="lineas" class="codigo" tabindex="0" aria-label="Últimas líneas escritas en InfluxDB"></pre>
+        <h2 class="subtitulo">Cómo las lee Grafana</h2>
+        <p class="vista__nota">Consulta Flux del panel de presión. Grafana reemplaza las variables <code>v.*</code> por el bucket, el rango de tiempo y la ventana de agregación del tablero.</p>
+        <pre id="flux" class="codigo" tabindex="0" aria-label="Consulta Flux de ejemplo"></pre>
+      </section>
+
+      <!-- Grafana -->
+      <section class="vista vista--grafana" data-vista="grafana" aria-labelledby="t-grafana" hidden>
+        <div class="grafana__cabecera">
+          <h1 id="t-grafana" class="vista__titulo">Histórico en Grafana</h1>
+          <a id="enlace-grafana" class="boton" href="#" target="_blank" rel="noopener noreferrer">Abrir Grafana en otra pestaña</a>
+        </div>
+        <div id="grafana-marco" class="grafana__marco"></div>
+      </section>
+
+      <!-- Ajustes -->
+      <section class="vista" data-vista="ajustes" aria-labelledby="t-ajustes" hidden>
+        <h1 id="t-ajustes" class="vista__titulo">Ajustes del proceso simulado</h1>
+        <form id="form-ajustes" class="ajustes" novalidate>
+          <fieldset>
+            <legend>Simulación</legend>
+            <label class="campo">Número de zonas <input name="zonas" type="number" min="1" max="12" step="1" required /></label>
+            <label class="campo">Intervalo entre ciclos (s) <input name="intervaloSeg" type="number" min="1" max="60" step="0.5" required /></label>
+            <label class="campo">Probabilidad de anomalía por ciclo (%) <input name="probAnomaliaPct" type="number" min="0" max="100" step="0.5" required /></label>
+            <label class="campo">Probabilidad de incendio por ciclo (%) <input name="probIncendioPct" type="number" min="0" max="100" step="0.1" required /></label>
+          </fieldset>
+          <fieldset>
+            <legend>Control</legend>
+            <label class="interruptor"><input name="modoAuto" type="checkbox" /><span>Control automático</span></label>
+            <label class="campo">Ciclos normales antes de reabrir <input name="ticksReapertura" type="number" min="1" max="20" step="1" required /></label>
+          </fieldset>
+          <fieldset class="ajustes__rangos">
+            <legend>Rangos de operación</legend>
+            <div class="rango"><span>Presión (bar)</span><label>mín <input name="presion.min" type="number" step="0.1" required /></label><label>máx <input name="presion.max" type="number" step="0.1" required /></label></div>
+            <div class="rango"><span>Temperatura (°C)</span><label>mín <input name="temperatura.min" type="number" step="1" required /></label><label>máx <input name="temperatura.max" type="number" step="1" required /></label></div>
+            <div class="rango"><span>Caudal (L/min)</span><label>mín <input name="caudal.min" type="number" step="1" required /></label><label>máx <input name="caudal.max" type="number" step="1" required /></label></div>
+          </fieldset>
+          <div id="errores-ajustes" class="errores" role="alert" tabindex="-1" hidden></div>
+          <div class="ajustes__acciones">
+            <button class="boton boton--principal" type="submit">Guardar cambios</button>
+            <button id="btn-descartar" class="boton" type="button">Descartar cambios</button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <!-- Detalle de zona -->
+    <div id="velo" class="velo" hidden></div>
+    <aside id="panel-zona" class="panel-zona" role="dialog" aria-modal="true" aria-labelledby="t-panel-zona" hidden>
+      <div class="panel-zona__cabecera">
+        <h2 id="t-panel-zona">Zona</h2>
+        <button id="btn-cerrar-panel" class="boton boton--icono" type="button" aria-label="Cerrar detalle de la zona">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18" /></svg>
+        </button>
+      </div>
+      <div id="panel-zona-cuerpo" class="panel-zona__cuerpo"></div>
+    </aside>
+
+    <div id="avisos" class="avisos" aria-live="polite"></div>
+
+    <script src="vendor/chart-4.5.1.umd.min.js"></script>
+    <script type="module" src="js/main.js"></script>
+  </body>
+</html>

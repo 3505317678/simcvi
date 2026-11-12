@@ -1,0 +1,12 @@
+{
+  "name": "simcvi",
+  "version": "1.0.0",
+  "private": true,
+  "description": "SIMCVI: simulación, monitoreo y control de válvulas industriales con Node-RED, InfluxDB 2 (Flux) y Grafana.",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test \"core/test/*.test.js\""
+  }
+}

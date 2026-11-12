@@ -1,0 +1,24 @@
+# Integración continua: pruebas del núcleo y validación de docker-compose.yml.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - name: Pruebas unitarias del núcleo
+        run: npm test
+      - name: Validar docker-compose.yml con un .env de prueba
+        run: |
+          bash scripts/init-env.sh
+          docker compose config --quiet

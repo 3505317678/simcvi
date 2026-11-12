@@ -1,0 +1,20 @@
+# Fuente de datos de Grafana: InfluxDB 2.9 con lenguaje Flux.
+# Los valores ${...} los toma Grafana de sus variables de entorno (docker-compose.yml),
+# así el token nunca queda escrito en este archivo.
+apiVersion: 1
+
+datasources:
+  - name: InfluxDB SIMCVI
+    uid: simcvi-influx
+    type: influxdb
+    access: proxy
+    url: http://influxdb:8086
+    isDefault: true
+    editable: false
+    jsonData:
+      version: Flux
+      organization: ${INFLUX_ORG}
+      defaultBucket: ${INFLUX_BUCKET}
+      timeInterval: 2s
+    secureJsonData:
+      token: ${GRAFANA_INFLUX_TOKEN}

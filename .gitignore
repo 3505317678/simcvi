@@ -1,0 +1,30 @@
+# Secretos: nunca al repositorio
+.env
+.env.*
+!.env.example
+
+# Archivos que Node-RED genera en su directorio de usuario (./node-red)
+node-red/.config.*.json
+node-red/.config.*.json.backup
+node-red/.sessions.json
+node-red/.flows.json.backup
+node-red/flows_cred.json
+node-red/.flows_cred.json.backup
+node-red/.npm/
+node-red/node_modules/
+node-red/lib/
+node-red/package.json
+node-red/package-lock.json
+
+# Sistema operativo y editores
+.DS_Store
+Thumbs.db
+*.log
+.vscode/*
+!.vscode/extensions.json
+
+# Respaldos de InfluxDB copiados al equipo
+respaldos/
+
+# Archivos de entorno con otro nombre (p. ej. simcvi.env)
+*.env

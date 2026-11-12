@@ -1,0 +1,88 @@
+/*
+ * SIMCVI · Fichas de diseño
+ *
+ * Criterio: interfaz de operación de alto desempeño. La planta se dibuja en
+ * grises neutros y el color se reserva para lo anormal: rojo para alarmas,
+ * ámbar para avisos. Así una alarma salta a la vista sin competir con la
+ * decoración. El azul apagado marca el rango normal de cada variable.
+ * Tipografía Barlow (inspirada en la señalización vial): legible, técnica y
+ * con cifras tabulares para lecturas que cambian.
+ */
+
+@font-face { font-family: "Barlow"; src: url("../vendor/fonts/barlow-latin-400-normal.woff2") format("woff2"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "Barlow"; src: url("../vendor/fonts/barlow-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Barlow"; src: url("../vendor/fonts/barlow-latin-600-normal.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "Barlow Condensed"; src: url("../vendor/fonts/barlow-condensed-latin-500-normal.woff2") format("woff2"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "Barlow Condensed"; src: url("../vendor/fonts/barlow-condensed-latin-600-normal.woff2") format("woff2"); font-weight: 600; font-display: swap; }
+
+:root {
+  color-scheme: light;
+
+  /* Superficies y tinta (turno de día) */
+  --fondo: #d6d9dc;
+  --superficie: #e6e8ea;
+  --superficie-2: #f1f2f3;
+  --borde: #b4b9be;
+  --linea: #59616a;
+  --tinta: #1c2126;
+  --tinta-2: #4b535b;
+  --tinta-3: #6b737b;
+
+  /* Estados: el color solo aparece cuando algo es anormal */
+  --banda-normal: #b8ccdb;
+  --banda-normal-borde: #7e9bb1;
+  --alarma: #c8102e;
+  --alarma-texto: #a50e26;
+  --alarma-suave: #f3d3d8;
+  --aviso: #d99100;
+  --aviso-texto: #7a5200;
+  --aviso-suave: #f5e5c2;
+  --foco: #0b5cad;
+  --principal: #2b3238;
+  --principal-texto: #ffffff;
+
+  /* Tipografía: escala de tercera menor (1,2) sobre 15 px */
+  --fuente: "Barlow", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fuente-condensada: "Barlow Condensed", "Barlow", system-ui, sans-serif;
+  --fuente-codigo: ui-monospace, "Cascadia Code", "Consolas", "Liberation Mono", monospace;
+  --t-1: 0.8333rem;  /* 12,5 px */
+  --t-2: 1rem;       /* 15 px */
+  --t-3: 1.2rem;     /* 18 px */
+  --t-4: 1.44rem;    /* 21,6 px */
+  --t-5: 1.728rem;   /* 26 px */
+  --t-6: 2.074rem;   /* 31 px */
+
+  /* Espaciado (múltiplos de 4 px) y forma */
+  --e-1: 4px;
+  --e-2: 8px;
+  --e-3: 12px;
+  --e-4: 16px;
+  --e-5: 24px;
+  --e-6: 32px;
+  --radio: 3px;
+  --duracion: 160ms;
+}
+
+/* Turno de noche: grises oscuros, mismos significados de color */
+:root[data-tema="oscuro"] {
+  color-scheme: dark;
+  --fondo: #1f2327;
+  --superficie: #2a2f34;
+  --superficie-2: #343a40;
+  --borde: #4a525b;
+  --linea: #a3acb5;
+  --tinta: #e4e7ea;
+  --tinta-2: #aab2ba;
+  --tinta-3: #8a929a;
+  --banda-normal: #34536b;
+  --banda-normal-borde: #5f86a4;
+  --alarma: #e5484d;
+  --alarma-texto: #ff8a8e;
+  --alarma-suave: #4a2529;
+  --aviso: #e8a317;
+  --aviso-texto: #f5c46b;
+  --aviso-suave: #46391f;
+  --foco: #6cb4ff;
+  --principal: #e4e7ea;
+  --principal-texto: #1c2126;
+}

@@ -1,0 +1,15 @@
+# Actualizaciones semanales de imágenes de Docker y acciones de GitHub.
+version: 2
+updates:
+  - package-ecosystem: docker-compose
+    directory: "/"
+    schedule:
+      interval: weekly
+    ignore:
+      # InfluxDB 3 no soporta Flux (ver docs/adr/0002-influxdb-2-flux.md).
+      - dependency-name: influxdb
+        versions: [">=3"]
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly

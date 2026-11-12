@@ -1,0 +1,691 @@
+[
+    {
+        "id": "tab_control",
+        "type": "tab",
+        "label": "1 · Simulación y control",
+        "disabled": false,
+        "info": "Ciclo de SIMCVI: cada segundo se consulta al núcleo si corresponde un ciclo.\nEl núcleo genera las lecturas, decide el estado de las válvulas y devuelve\nla instantánea (para la interfaz) y las líneas para InfluxDB.\n\nLa lógica está en `core/` y se prueba con `node --test`."
+    },
+    {
+        "id": "tab_api",
+        "type": "tab",
+        "label": "2 · API y tiempo real",
+        "disabled": false,
+        "info": "API HTTP (`/api/...`) y WebSocket (`/ws/simcvi`) que usa la interfaz web.\nTodas las rutas llegan al «Controlador API», que delega en el núcleo."
+    },
+    {
+        "id": "tab_persistencia",
+        "type": "tab",
+        "label": "3 · Persistencia y salud",
+        "disabled": false,
+        "info": "Escritura en InfluxDB 2.x (`/api/v2/write`, protocolo de línea, precisión ns)\ny chequeo periódico de InfluxDB y Grafana. Si InfluxDB falla, el control sigue."
+    },
+    {
+        "id": "ws_listener",
+        "type": "websocket-listener",
+        "path": "/ws/simcvi",
+        "wholemsg": "false"
+    },
+    {
+        "id": "cm_ctrl",
+        "type": "comment",
+        "z": "tab_control",
+        "name": "Ciclo de simulación y control (la lógica está en core/)",
+        "info": "1. «Inicializar estado» crea el estado al arrancar con la configuración de las variables SIM_*.\n2. «Reloj 1 s» dispara «Ciclo de control»; el núcleo decide si ya toca un ciclo según el intervalo.\n3. Salida 1: instantánea → WebSocket. Salida 2: líneas → InfluxDB.",
+        "x": 290,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "inj_inicio",
+        "type": "inject",
+        "z": "tab_control",
+        "name": "Al arrancar",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "0.1",
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 130,
+        "y": 100,
+        "wires": [
+            [
+                "fn_inicio"
+            ]
+        ]
+    },
+    {
+        "id": "fn_inicio",
+        "type": "function",
+        "z": "tab_control",
+        "name": "Inicializar estado",
+        "func": "// Crea el estado único de SIMCVI en el contexto global (una sola vez).\nconst nucleo = global.get('simcvi');\nif (!nucleo) {\n    node.error('No se cargó el núcleo SIMCVI: revise functionGlobalContext en settings.js.');\n    node.status({ fill: 'red', shape: 'ring', text: 'sin núcleo' });\n    return null;\n}\nif (!global.get('estado')) {\n    global.set('estado', nucleo.crearEstado());\n    node.log(`Estado SIMCVI ${nucleo.VERSION} creado.`);\n}\nnode.status({ fill: 'green', shape: 'dot', text: `núcleo ${nucleo.VERSION}` });\nreturn null;\n",
+        "outputs": 0,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 330,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "inj_reloj",
+        "type": "inject",
+        "z": "tab_control",
+        "name": "Reloj 1 s",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "1",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "1",
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 130,
+        "y": 180,
+        "wires": [
+            [
+                "fn_ciclo"
+            ]
+        ]
+    },
+    {
+        "id": "fn_ciclo",
+        "type": "function",
+        "z": "tab_control",
+        "name": "Ciclo de control",
+        "func": "// Ejecuta un ciclo del núcleo cuando corresponde según el intervalo configurado.\nconst nucleo = global.get('simcvi');\nconst estado = global.get('estado');\nif (!nucleo || !estado) return null;\n\nconst resultado = nucleo.ciclo(estado, Date.now());\nif (!resultado) return null;\n\nconst k = resultado.instantanea.kpis;\nnode.status({\n    fill: k.emergencia ? 'red' : (k.zonasAlerta ? 'yellow' : 'green'),\n    shape: 'dot',\n    text: `ciclo ${estado.simulacion.ciclos} · alerta ${k.zonasAlerta}/${k.zonas}`,\n});\n// Salida 1: instantánea para la interfaz. Salida 2: líneas para InfluxDB.\nreturn [{ payload: resultado.instantanea }, { payload: resultado.lineas }];\n",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 330,
+        "y": 180,
+        "wires": [
+            [
+                "lo_ws_ctrl",
+                "dbg_ciclo"
+            ],
+            [
+                "lo_db_ctrl"
+            ]
+        ]
+    },
+    {
+        "id": "dbg_ciclo",
+        "type": "debug",
+        "z": "tab_control",
+        "name": "Ver instantánea",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 580,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "lo_ws_ctrl",
+        "type": "link out",
+        "z": "tab_control",
+        "name": "→ difundir",
+        "mode": "link",
+        "links": [
+            "li_difundir"
+        ],
+        "x": 555,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "lo_db_ctrl",
+        "type": "link out",
+        "z": "tab_control",
+        "name": "→ InfluxDB",
+        "mode": "link",
+        "links": [
+            "li_escribir"
+        ],
+        "x": 555,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "cm_api",
+        "type": "comment",
+        "z": "tab_api",
+        "name": "API HTTP de SIMCVI (ver README · API)",
+        "info": "Cada ruta llega al «Controlador API», que valida la solicitud con el núcleo.\nSalida 1: respuesta HTTP. Salida 2: instantánea para el WebSocket. Salida 3: eventos para InfluxDB.",
+        "x": 200,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "http_0",
+        "type": "http in",
+        "z": "tab_api",
+        "name": "GET estado",
+        "url": "/api/estado",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 100,
+        "wires": [
+            [
+                "fn_api"
+            ]
+        ]
+    },
+    {
+        "id": "http_1",
+        "type": "http in",
+        "z": "tab_api",
+        "name": "GET historial",
+        "url": "/api/historial",
+        "method": "get",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 140,
+        "wires": [
+            [
+                "fn_api"
+            ]
+        ]
+    },
+    {
+        "id": "http_2",
+        "type": "http in",
+        "z": "tab_api",
+        "name": "POST simulación",
+        "url": "/api/simulacion/:accion",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 180,
+        "wires": [
+            [
+                "fn_api"
+            ]
+        ]
+    },
+    {
+        "id": "http_3",
+        "type": "http in",
+        "z": "tab_api",
+        "name": "PUT configuración",
+        "url": "/api/config",
+        "method": "put",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 220,
+        "wires": [
+            [
+                "fn_api"
+            ]
+        ]
+    },
+    {
+        "id": "http_4",
+        "type": "http in",
+        "z": "tab_api",
+        "name": "POST válvulas",
+        "url": "/api/valvulas/:zona/:accion",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 260,
+        "wires": [
+            [
+                "fn_api"
+            ]
+        ]
+    },
+    {
+        "id": "http_5",
+        "type": "http in",
+        "z": "tab_api",
+        "name": "POST emergencia",
+        "url": "/api/emergencia/:accion",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 300,
+        "wires": [
+            [
+                "fn_api"
+            ]
+        ]
+    },
+    {
+        "id": "http_6",
+        "type": "http in",
+        "z": "tab_api",
+        "name": "POST pruebas",
+        "url": "/api/pruebas/:tipo/:zona",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 340,
+        "wires": [
+            [
+                "fn_api"
+            ]
+        ]
+    },
+    {
+        "id": "http_7",
+        "type": "http in",
+        "z": "tab_api",
+        "name": "POST métricas",
+        "url": "/api/metricas/:accion",
+        "method": "post",
+        "upload": false,
+        "swaggerDoc": "",
+        "x": 170,
+        "y": 380,
+        "wires": [
+            [
+                "fn_api"
+            ]
+        ]
+    },
+    {
+        "id": "fn_api",
+        "type": "function",
+        "z": "tab_api",
+        "name": "Controlador API",
+        "func": "// Delegar la solicitud al núcleo; aquí solo se adapta Node-RED ↔ HTTP.\nconst nucleo = global.get('simcvi');\nconst estado = global.get('estado');\nmsg.headers = {\n    'Content-Type': 'application/json; charset=utf-8',\n    'Cache-Control': 'no-store',\n    'X-Content-Type-Options': 'nosniff',\n};\nif (!nucleo || !estado) {\n    msg.statusCode = 503;\n    msg.payload = { ok: false, error: { codigo: 503, mensaje: 'SIMCVI se está iniciando. Intente de nuevo.' } };\n    return [msg, null, null];\n}\n\nconst solicitud = { metodo: msg.req.method, ruta: msg.req.path, cuerpo: msg.payload };\nconst respuesta = nucleo.atenderSolicitud(estado, solicitud, Date.now());\nmsg.statusCode = respuesta.estado;\nmsg.payload = respuesta.cuerpo;\n\nconst difusion = respuesta.difundir ? { payload: nucleo.instantanea(estado) } : null;\nconst lineas = respuesta.persistir ? nucleo.lineasEventosPendientes(estado) : [];\nreturn [msg, difusion, lineas.length ? { payload: lineas } : null];\n",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 440,
+        "y": 240,
+        "wires": [
+            [
+                "http_resp"
+            ],
+            [
+                "lo_ws_api"
+            ],
+            [
+                "lo_db_api"
+            ]
+        ]
+    },
+    {
+        "id": "http_resp",
+        "type": "http response",
+        "z": "tab_api",
+        "name": "Respuesta HTTP",
+        "statusCode": "",
+        "headers": {},
+        "x": 680,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "lo_ws_api",
+        "type": "link out",
+        "z": "tab_api",
+        "name": "→ difundir",
+        "mode": "link",
+        "links": [
+            "li_difundir"
+        ],
+        "x": 655,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "lo_db_api",
+        "type": "link out",
+        "z": "tab_api",
+        "name": "→ InfluxDB",
+        "mode": "link",
+        "links": [
+            "li_escribir"
+        ],
+        "x": 655,
+        "y": 280,
+        "wires": []
+    },
+    {
+        "id": "catch_api",
+        "type": "catch",
+        "z": "tab_api",
+        "name": "Errores de la API",
+        "scope": [
+            "fn_api"
+        ],
+        "uncaught": false,
+        "x": 160,
+        "y": 460,
+        "wires": [
+            [
+                "fn_api_error"
+            ]
+        ]
+    },
+    {
+        "id": "fn_api_error",
+        "type": "function",
+        "z": "tab_api",
+        "name": "Responder 500",
+        "func": "// Si el controlador falla, la petición recibe un 500 en lugar de quedar colgada.\nif (!msg.res) return null;\nnode.warn(`Error en la API: ${msg.error && msg.error.message}`);\nmsg.statusCode = 500;\nmsg.headers = { 'Content-Type': 'application/json; charset=utf-8' };\nmsg.payload = { ok: false, error: { codigo: 500, mensaje: 'Error interno del servidor.' } };\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 380,
+        "y": 460,
+        "wires": [
+            [
+                "http_resp"
+            ]
+        ]
+    },
+    {
+        "id": "cm_ws",
+        "type": "comment",
+        "z": "tab_api",
+        "name": "WebSocket /ws/simcvi (tiempo real)",
+        "info": "Las instantáneas llegan por «difundir» y se envían a todos los clientes.\nCuando un cliente se conecta envía {\"tipo\":\"hola\"} y recibe el estado actual solo él.",
+        "x": 180,
+        "y": 540,
+        "wires": []
+    },
+    {
+        "id": "li_difundir",
+        "type": "link in",
+        "z": "tab_api",
+        "name": "difundir",
+        "links": [
+            "lo_ws_ctrl",
+            "lo_ws_api",
+            "lo_ws_db"
+        ],
+        "x": 135,
+        "y": 600,
+        "wires": [
+            [
+                "ws_out"
+            ]
+        ]
+    },
+    {
+        "id": "ws_in",
+        "type": "websocket in",
+        "z": "tab_api",
+        "name": "Mensajes de clientes",
+        "server": "ws_listener",
+        "client": "",
+        "x": 170,
+        "y": 660,
+        "wires": [
+            [
+                "fn_ws_hola"
+            ]
+        ]
+    },
+    {
+        "id": "fn_ws_hola",
+        "type": "function",
+        "z": "tab_api",
+        "name": "Saludo inicial",
+        "func": "// Responde al saludo de un cliente nuevo con la instantánea actual (solo a esa sesión).\nlet datos = msg.payload;\nif (typeof datos === 'string') {\n    try { datos = JSON.parse(datos); } catch (e) { return null; }\n}\nif (!datos || datos.tipo !== 'hola') return null;\nconst nucleo = global.get('simcvi');\nconst estado = global.get('estado');\nif (!nucleo || !estado) return null;\nmsg.payload = nucleo.instantanea(estado);\nreturn msg;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 400,
+        "y": 660,
+        "wires": [
+            [
+                "ws_out"
+            ]
+        ]
+    },
+    {
+        "id": "ws_out",
+        "type": "websocket out",
+        "z": "tab_api",
+        "name": "WebSocket /ws/simcvi",
+        "server": "ws_listener",
+        "client": "",
+        "x": 660,
+        "y": 620,
+        "wires": []
+    },
+    {
+        "id": "cm_db",
+        "type": "comment",
+        "z": "tab_persistencia",
+        "name": "Escritura en InfluxDB 2.x (Flux)",
+        "info": "Usa INFLUX_URL, INFLUX_ORG, INFLUX_BUCKET e INFLUX_TOKEN del entorno.\nRespuesta 204 = escrito. Cualquier otro código o error de red se registra\nen las métricas de persistencia y el control sigue funcionando.",
+        "x": 170,
+        "y": 40,
+        "wires": []
+    },
+    {
+        "id": "li_escribir",
+        "type": "link in",
+        "z": "tab_persistencia",
+        "name": "escribir",
+        "links": [
+            "lo_db_ctrl",
+            "lo_db_api"
+        ],
+        "x": 135,
+        "y": 100,
+        "wires": [
+            [
+                "fn_preparar"
+            ]
+        ]
+    },
+    {
+        "id": "fn_preparar",
+        "type": "function",
+        "z": "tab_persistencia",
+        "name": "Preparar escritura",
+        "func": "// Arma la petición POST /api/v2/write con las líneas del ciclo.\nconst nucleo = global.get('simcvi');\nconst estado = global.get('estado');\nconst lineas = Array.isArray(msg.payload) ? msg.payload : [];\nif (!nucleo || !estado || !lineas.length) return null;\n\nconst url = env.get('INFLUX_URL');\nconst org = env.get('INFLUX_ORG');\nconst bucket = env.get('INFLUX_BUCKET');\nconst token = env.get('INFLUX_TOKEN');\nif (!url || !org || !bucket || !token) {\n    nucleo.registrarEscritura(estado, { ok: false, error: 'Faltan variables INFLUX_* en el entorno' });\n    node.status({ fill: 'grey', shape: 'ring', text: 'sin configuración de InfluxDB' });\n    return null;\n}\n\nnucleo.registrarEnvio(estado, lineas.length);\nreturn {\n    method: 'POST',\n    url: `${url}/api/v2/write?org=${encodeURIComponent(org)}&bucket=${encodeURIComponent(bucket)}&precision=ns`,\n    headers: {\n        Authorization: `Token ${token}`,\n        'Content-Type': 'text/plain; charset=utf-8',\n        Accept: 'application/json',\n    },\n    payload: lineas.join('\\n'),\n    requestTimeout: 5000,\n    lineas: lineas.length,\n    inicio: Date.now(),\n};\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 330,
+        "y": 100,
+        "wires": [
+            [
+                "req_escribir"
+            ]
+        ]
+    },
+    {
+        "id": "req_escribir",
+        "type": "http request",
+        "z": "tab_persistencia",
+        "name": "POST /api/v2/write",
+        "method": "use",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 540,
+        "y": 100,
+        "wires": [
+            [
+                "fn_resultado"
+            ]
+        ]
+    },
+    {
+        "id": "fn_resultado",
+        "type": "function",
+        "z": "tab_persistencia",
+        "name": "Registrar resultado",
+        "func": "// 204 = escritura correcta. En errores de red, statusCode trae el código (p. ej. ECONNREFUSED).\nconst nucleo = global.get('simcvi');\nconst estado = global.get('estado');\nif (!nucleo || !estado) return null;\nconst latenciaMs = Date.now() - (msg.inicio || Date.now());\nconst ok = msg.statusCode === 204;\nif (ok) {\n    nucleo.registrarEscritura(estado, { ok: true, lineas: msg.lineas, latenciaMs });\n    node.status({ fill: 'green', shape: 'dot', text: `${msg.lineas} líneas · ${latenciaMs} ms` });\n} else {\n    const detalle = String(msg.payload || '').slice(0, 200);\n    nucleo.registrarEscritura(estado, { ok: false, latenciaMs, error: `HTTP ${msg.statusCode}: ${detalle}` });\n    node.status({ fill: 'red', shape: 'ring', text: `fallo: ${msg.statusCode}` });\n}\nreturn null;\n",
+        "outputs": 0,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 760,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "cm_salud",
+        "type": "comment",
+        "z": "tab_persistencia",
+        "name": "Salud de los servicios (cada 10 s)",
+        "info": "Consulta /health de InfluxDB y /api/health de Grafana y difunde el resultado.",
+        "x": 170,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "inj_salud",
+        "type": "inject",
+        "z": "tab_persistencia",
+        "name": "Cada 10 s",
+        "props": [
+            {
+                "p": "payload"
+            }
+        ],
+        "repeat": "10",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "2",
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 140,
+        "y": 260,
+        "wires": [
+            [
+                "fn_salud"
+            ]
+        ]
+    },
+    {
+        "id": "fn_salud",
+        "type": "function",
+        "z": "tab_persistencia",
+        "name": "Preparar chequeos",
+        "func": "// Un mensaje por servicio hacia el mismo nodo HTTP.\nconst destinos = [\n    { servicio: 'influxdb', base: env.get('INFLUX_URL'), ruta: '/health' },\n    { servicio: 'grafana', base: env.get('GRAFANA_INTERNAL_URL'), ruta: '/api/health' },\n].filter((d) => d.base);\nreturn [destinos.map((d) => ({\n    method: 'GET',\n    url: d.base + d.ruta,\n    servicio: d.servicio,\n    requestTimeout: 3000,\n    inicio: Date.now(),\n    payload: '',\n}))];\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 330,
+        "y": 260,
+        "wires": [
+            [
+                "req_salud"
+            ]
+        ]
+    },
+    {
+        "id": "req_salud",
+        "type": "http request",
+        "z": "tab_persistencia",
+        "name": "GET salud",
+        "method": "use",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 520,
+        "y": 260,
+        "wires": [
+            [
+                "fn_salud_resultado"
+            ]
+        ]
+    },
+    {
+        "id": "fn_salud_resultado",
+        "type": "function",
+        "z": "tab_persistencia",
+        "name": "Registrar salud",
+        "func": "const nucleo = global.get('simcvi');\nconst estado = global.get('estado');\nif (!nucleo || !estado) return null;\nconst ok = msg.statusCode === 200;\nnucleo.registrarSalud(estado, msg.servicio, {\n    ok,\n    latenciaMs: Date.now() - msg.inicio,\n    detalle: ok ? 'en línea' : `sin respuesta (${msg.statusCode})`,\n});\nnode.status({ fill: ok ? 'green' : 'red', shape: ok ? 'dot' : 'ring', text: `${msg.servicio}: ${ok ? 'ok' : msg.statusCode}` });\n// Solo el último chequeo difunde, para no duplicar mensajes.\nreturn msg.servicio === 'grafana' ? { payload: nucleo.instantanea(estado) } : null;\n",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 730,
+        "y": 260,
+        "wires": [
+            [
+                "lo_ws_db"
+            ]
+        ]
+    },
+    {
+        "id": "lo_ws_db",
+        "type": "link out",
+        "z": "tab_persistencia",
+        "name": "→ difundir",
+        "mode": "link",
+        "links": [
+            "li_difundir"
+        ],
+        "x": 915,
+        "y": 260,
+        "wires": []
+    }
+]
